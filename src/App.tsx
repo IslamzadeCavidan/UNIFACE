@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { supabase } from "./supabaseClient";
-
 
 type Post = {
   id: number;
@@ -42,60 +41,192 @@ const mockPosts: Post[] = [
   },
 ];
 
-const App: React.FC = () => {
-  const [showSignupNote, setShowSignupNote] = useState(false);
+type View = "landing" | "dashboard";
 
-  // form state
+const App: React.FC = () => {
+  const [view, setView] = useState<View>("landing");
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [field, setField] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<"success" | "error" | null>(
+    null
+  );
+
+  const formRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToForm = () => {
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
+    setMessageType(null);
 
-    if (!fullName || !email) {
-      setMessage("Please fill in at least your name and university email.");
+    const nameTrimmed = fullName.trim();
+    const emailTrimmed = email.trim();
+    const fieldTrimmed = field.trim();
+
+    if (!nameTrimmed || !emailTrimmed) {
+      setMessage("Please fill in your name and university email.");
+      setMessageType("error");
       return;
     }
 
-    // simple ADA restriction for beta
-    if (!email.toLowerCase().endsWith("@ada.edu.az")) {
-      setMessage("For the beta, please use your ADA university email.");
+    if (!emailTrimmed.toLowerCase().endsWith("@ada.edu.az")) {
+      setMessage(
+        "The platform is currently only for ADA University students. Please use your @ada.edu.az email."
+      );
+      setMessageType("error");
       return;
     }
 
+    // ✅ If we reach here, the email is ADA → go to dashboard immediately
+    setView("dashboard");
+    setMessage("You’re in. Welcome to UNIFACE.");
+    setMessageType("success");
+
+    // Clear only email/field; keep fullName for greeting
+    setEmail("");
+    setField("");
+
+    // Insert into Supabase in the background
     try {
       setLoading(true);
       const { error } = await supabase.from("early_signups").insert([
         {
-          full_name: fullName,
-          email,
-          field,
+          full_name: nameTrimmed,
+          email: emailTrimmed,
+          field: fieldTrimmed,
         },
       ]);
 
       if (error) {
         console.error(error);
-        setMessage("Something went wrong. Please try again.");
-      } else {
-        setMessage("Thank you! You’re on the early access list.");
-        setFullName("");
-        setEmail("");
-        setField("");
+        // We already switched view; just update message if needed
+        setMessage("You’re in, but there was an issue saving your data.");
+        setMessageType("error");
       }
     } catch (err) {
       console.error(err);
-      setMessage("Unexpected error. Try again later.");
+      setMessage("Unexpected error while saving. You are still in.");
+      setMessageType("error");
     } finally {
       setLoading(false);
     }
   };
 
+  // ============= DASHBOARD VIEW =============
+  if (view === "dashboard") {
+    return (
+      <div className="app">
+        {message && (
+          <div
+            className={`flash-message ${
+              messageType === "success" ? "flash-success" : "flash-error"
+            }`}
+          >
+            {message}
+          </div>
+        )}
+
+        <header className="app-header">
+          <div className="brand">
+            <div className="brand-logo">U</div>
+            <span className="brand-name">UNIFACE</span>
+          </div>
+          <div className="header-buttons">
+            <span className="user-chip">
+              {fullName ? fullName : "ADA student"}
+            </span>
+          </div>
+        </header>
+
+        <main className="app-main">
+          <section className="content">
+            <div className="hero">
+              <h1>Welcome to your academic dashboard.</h1>
+              <p>
+                This is the early UNIFACE workspace for ADA students. Here
+                you’ll see your key fields, questions, and study tools in one
+                place.
+              </p>
+            </div>
+
+            <div className="dashboard-grid">
+              <div className="dashboard-card">
+                <h2>Your focus areas</h2>
+                <p className="dashboard-text">
+                  {field
+                    ? `Primary field of interest: ${field}.`
+                    : "You selected your field during sign-up. Future versions will use it to personalize content."}
+                </p>
+                <ul className="dashboard-list">
+                  <li>• Track questions by subject and course</li>
+                  <li>• Organize materials for Finance, CS, Math, etc.</li>
+                  <li>• See curated resources per discipline</li>
+                </ul>
+              </div>
+
+              <div className="dashboard-card">
+                <h2>Academic discussions</h2>
+                <p className="dashboard-text">
+                  Latest questions from the academic feed. In later versions,
+                  this will be filtered by your courses and interests.
+                </p>
+                <div className="post-list">
+                  {mockPosts.map((post) => (
+                    <article key={post.id} className="post-card">
+                      <div className="post-header">
+                        <h3>{post.title}</h3>
+                        <span className="post-field">{post.field}</span>
+                      </div>
+                      <p className="post-summary">{post.summary}</p>
+                      <div className="post-meta">
+                        <span>▲ {post.votes} votes</span>
+                        <span>💬 {post.replies} replies</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="dashboard-card">
+                <h2>Next steps for UNIFACE</h2>
+                <ul className="dashboard-list">
+                  <li>• Personal timetable and deadlines</li>
+                  <li>• Saved questions and resources</li>
+                  <li>• AI assistant tied to your courses</li>
+                </ul>
+                <p className="dashboard-text">
+                  You’re part of the first ADA cohort. Your feedback will shape
+                  how this dashboard evolves.
+                </p>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  // ============= LANDING VIEW =============
   return (
     <div className="app">
+      {message && (
+        <div
+          className={`flash-message ${
+            messageType === "success" ? "flash-success" : "flash-error"
+          }`}
+        >
+          {message}
+        </div>
+      )}
+
       {/* Top bar */}
       <header className="app-header">
         <div className="brand">
@@ -103,16 +234,10 @@ const App: React.FC = () => {
           <span className="brand-name">UNIFACE</span>
         </div>
         <div className="header-buttons">
-          <button
-            className="btn btn-outline"
-            onClick={() => setShowSignupNote(true)}
-          >
+          <button className="btn btn-outline" onClick={scrollToForm}>
             Log in
           </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowSignupNote(true)}
-          >
+          <button className="btn btn-primary" onClick={scrollToForm}>
             Join community
           </button>
         </div>
@@ -129,10 +254,7 @@ const App: React.FC = () => {
               researchers ask questions, share resources, and build projects
               together.
             </p>
-            <button
-              className="btn btn-primary"
-              onClick={() => setShowSignupNote(true)}
-            >
+            <button className="btn btn-primary" onClick={scrollToForm}>
               Get early access
             </button>
           </div>
@@ -160,7 +282,7 @@ const App: React.FC = () => {
         </section>
 
         {/* Right side: signup form */}
-        <aside className="sidebar">
+        <aside className="sidebar" ref={formRef}>
           <h2>Create your academic profile</h2>
           <p className="sidebar-text">
             Join UNIFACE to ask questions, follow fields, and collaborate on
@@ -171,7 +293,7 @@ const App: React.FC = () => {
             <label className="field">
               <span>Full name</span>
               <input
-                placeholder="Javidan Islamzade"
+                placeholder="Your full name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
@@ -205,12 +327,16 @@ const App: React.FC = () => {
             </button>
           </form>
 
-          {message && <p className="signup-note">{message}</p>}
-
-          {showSignupNote && !message && (
-            <p className="signup-note">
-              You clicked join from the top bar. Complete the form to request
-              access.
+          {message && (
+            <p
+              className={
+                "signup-note " +
+                (messageType === "error"
+                  ? "signup-note-error"
+                  : "signup-note-success")
+              }
+            >
+              {message}
             </p>
           )}
         </aside>
