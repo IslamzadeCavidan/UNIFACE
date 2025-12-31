@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 
+import "./App.css";
+
 import Landing from "./app/Landing";
 import Auth from "./app/Auth";
 import AuthCallback from "./app/AuthCallback";
